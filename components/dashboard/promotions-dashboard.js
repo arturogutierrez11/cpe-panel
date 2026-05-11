@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   Bell,
-  Boxes,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -12,22 +11,26 @@ import {
   ExternalLink,
   Gauge,
   LogOut,
+  Mail,
   Megaphone,
-  PauseCircle,
+  Moon,
   PlayCircle,
   RefreshCw,
   Search,
+  Settings,
   ShieldCheck,
   SlidersHorizontal,
   Store,
   Trash2,
+  UserPlus,
   UserCircle
 } from "lucide-react";
 import { StatusPill } from "@/components/ui/status-pill";
-import { calculatePromotionMetrics } from "@/src/domain/promotions/promotion-metrics";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { AporteMlChart } from "@/components/dashboard/aporte-ml-chart";
 import { formatCurrency, formatDateTime, formatNumber, formatPercent } from "@/src/shared/formatters";
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 100;
 const DATADOG_URL = "https://us5.datadoghq.com/logs?query=&agg_m=count&agg_m_source=base&agg_t=count&cols=host%2Cservice&fromUser=true&messageDisplay=inline&refresh_mode=sliding&storage=hot&stream_sort=desc&viz=stream&from_ts=1776178805789&to_ts=1776179705789&live=true";
 
 const navItems = [
@@ -36,28 +39,45 @@ const navItems = [
   { id: "catalog", label: "Catalogo", icon: Store },
   { id: "actions", label: "Acciones", icon: SlidersHorizontal },
   { id: "logs", label: "DataDog", icon: Activity },
-  { id: "profile", label: "Perfil", icon: UserCircle },
   { id: "notifications", label: "Notificaciones", icon: Bell }
 ];
 
 const statusFilters = [
+  { value: "", label: "Todas" },
   { value: "ACTIVE", label: "Activas" },
-  { value: "SYNC", label: "Sincronizadas" },
+  { value: "SYNCED", label: "Sync" },
   { value: "DELETED", label: "Eliminadas" }
 ];
 
+const orderStatusFilters = [
+  { value: "", label: "Todas" },
+  { value: "paid", label: "Pagadas" },
+  { value: "cancelled", label: "Canceladas" }
+];
+
+async function readOptionalJson(result) {
+  if (result.status !== "fulfilled" || !result.value.ok) {
+    return { total: 0 };
+  }
+
+  return result.value.json();
+}
+
 export function PromotionsDashboard() {
   const [section, setSection] = useState("central");
-  const [status, setStatus] = useState("ACTIVE");
+  const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(null);
   const [promotions, setPromotions] = useState({ data: [], total: 0, page: 1, limit: PAGE_SIZE, totalPages: 1 });
+  const [promotionCounts, setPromotionCounts] = useState({ active: 0, sync: 0, deleted: 0 });
   const [orders, setOrders] = useState({ data: [], total: 0 });
   const [catalog, setCatalog] = useState({ data: [], total: 0, page: 1, limit: PAGE_SIZE, totalPages: 1 });
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState({ central: true, orders: true, catalog: true, profile: true });
   const [error, setError] = useState("");
+  const [nightMode, setNightMode] = useState(false);
+  const isBusy = loading.central || loading.orders || loading.catalog || loading.profile;
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -67,17 +87,27 @@ export function PromotionsDashboard() {
       setError("");
 
       const params = new URLSearchParams({
-        status,
         page: String(page),
-        limit: String(PAGE_SIZE),
-        q: query
+        limit: String(PAGE_SIZE)
       });
 
+      if (status) params.set("status", status);
+      if (query) params.set("q", query);
+
       try {
-        const [promotionsResponse, ordersResponse] = await Promise.all([
+        const [promotionsResult, ordersResult, activeResult, syncResult, deletedResult] = await Promise.allSettled([
           fetch(`/api/promotions?${params}`, { signal: abortController.signal }),
-          fetch("/api/orders?limit=12", { signal: abortController.signal })
+          fetch("/api/orders?limit=12", { signal: abortController.signal }),
+          fetch("/api/promotions?status=ACTIVE&page=1&limit=1", { signal: abortController.signal }),
+          fetch("/api/promotions?status=SYNCED&page=1&limit=1", { signal: abortController.signal }),
+          fetch("/api/promotions?status=DELETED&page=1&limit=1", { signal: abortController.signal })
         ]);
+
+        if (promotionsResult.status === "rejected") {
+          throw promotionsResult.reason;
+        }
+
+        const promotionsResponse = promotionsResult.value;
 
         if (promotionsResponse.status === 401) {
           window.location.href = "/login";
@@ -87,9 +117,20 @@ export function PromotionsDashboard() {
         if (!promotionsResponse.ok) throw new Error("No se pudieron cargar promociones");
 
         const promotionsData = await promotionsResponse.json();
-        const ordersData = ordersResponse.ok ? await ordersResponse.json() : { data: [], total: 0 };
+        const ordersResponse = ordersResult.status === "fulfilled" ? ordersResult.value : null;
+        const ordersData = ordersResponse?.ok ? await ordersResponse.json() : { data: [], total: 0 };
+        const [activeData, syncData, deletedData] = await Promise.all([
+          readOptionalJson(activeResult),
+          readOptionalJson(syncResult),
+          readOptionalJson(deletedResult)
+        ]);
 
         setPromotions(promotionsData);
+        setPromotionCounts({
+          active: activeData.total || 0,
+          sync: syncData.total || 0,
+          deleted: deletedData.total || 0
+        });
         setOrders(ordersData);
         setSelected((current) => current || promotionsData.data?.[0] || null);
       } catch (requestError) {
@@ -112,7 +153,7 @@ export function PromotionsDashboard() {
       setLoading((current) => ({ ...current, catalog: true }));
 
       try {
-        const params = new URLSearchParams({ page: "1", limit: "50" });
+        const params = new URLSearchParams({ page: "1", limit: "100" });
         const response = await fetch(`/api/promotion-catalog?${params}`, { signal: abortController.signal });
         if (response.ok) setCatalog(await response.json());
       } finally {
@@ -136,7 +177,6 @@ export function PromotionsDashboard() {
     loadProfile();
   }, []);
 
-  const metrics = useMemo(() => calculatePromotionMetrics(promotions.data, promotions.total), [promotions]);
   const notifications = useMemo(() => buildNotifications(promotions.data, orders.data), [promotions.data, orders.data]);
 
   function changeStatus(nextStatus) {
@@ -151,11 +191,16 @@ export function PromotionsDashboard() {
   }
 
   return (
-    <main className="ops-shell">
+    <main className={nightMode ? "ops-shell is-night" : "ops-shell"}>
       <aside className="ops-sidebar">
         <div className="ops-brand">
-          <div>CP</div>
-          <span>Promo Center</span>
+          <div className="ops-brand-media">
+            <img src="/meli-logo.png" alt="Mercado Libre" />
+          </div>
+          <div className="ops-brand-copy">
+          
+            <strong>Central de promociones</strong>
+          </div>
         </div>
 
         <nav className="ops-nav" aria-label="Secciones del panel">
@@ -170,13 +215,20 @@ export function PromotionsDashboard() {
           })}
         </nav>
 
-        <button className="ops-logout" onClick={logout}>
-          <LogOut size={18} />
-          Salir
+        <button className={section === "configuration" ? "ops-logout is-active" : "ops-logout"} onClick={() => setSection("configuration")}>
+          <Settings size={18} />
+          Configuracion
         </button>
       </aside>
 
       <section className="ops-main">
+        {isBusy ? (
+          <div className="panel-busy-indicator">
+            <LoadingSpinner size="sm" label="Actualizando panel" />
+            Actualizando
+          </div>
+        ) : null}
+
         <header className="ops-header">
           <div>
             <span className="ops-kicker"><ShieldCheck size={15} /> Central de promociones MELI</span>
@@ -186,7 +238,7 @@ export function PromotionsDashboard() {
           <div className="ops-header-actions">
             <span className="user-chip"><UserCircle size={17} /> {profile?.email || "Sesion activa"}</span>
             <button className="clear-button" onClick={() => window.location.reload()}>
-              <RefreshCw size={17} />
+              {isBusy ? <LoadingSpinner size="sm" label="Actualizando datos" /> : <RefreshCw size={17} />}
               Actualizar
             </button>
           </div>
@@ -197,7 +249,7 @@ export function PromotionsDashboard() {
             promotions={promotions}
             selected={selected}
             setSelected={setSelected}
-            metrics={metrics}
+            counts={promotionCounts}
             status={status}
             changeStatus={changeStatus}
             query={query}
@@ -213,21 +265,20 @@ export function PromotionsDashboard() {
         {section === "catalog" ? <CatalogSection catalog={catalog} loading={loading.catalog} /> : null}
         {section === "actions" ? <ActionsSection /> : null}
         {section === "logs" ? <LogsSection /> : null}
-        {section === "profile" ? <ProfileSection profile={profile} loading={loading.profile} /> : null}
         {section === "notifications" ? <NotificationsSection notifications={notifications} /> : null}
+        {section === "configuration" ? <ConfigurationSection profile={profile} nightMode={nightMode} setNightMode={setNightMode} onLogout={logout} /> : null}
       </section>
     </main>
   );
 }
 
-function CentralSection({ promotions, selected, setSelected, metrics, status, changeStatus, query, setQuery, page, setPage, loading, error }) {
+function CentralSection({ promotions, selected, setSelected, counts, status, changeStatus, query, setQuery, page, setPage, loading, error }) {
   return (
     <div className="module-stack">
-      <section className="metric-grid-clean">
-        <Metric icon={Boxes} label="Promociones" value={formatNumber(metrics.total)} detail="Total filtrado en Mongo" />
-        <Metric icon={CheckCircle2} label="Rentables" value={formatNumber(metrics.profitable)} detail="En la pagina actual" />
-        <Metric icon={PauseCircle} label="Should pause" value={formatNumber(metrics.shouldPause)} detail="Alertas del algoritmo" />
-        <Metric icon={Megaphone} label="Rentabilidad prom." value={formatPercent(metrics.avgProfitability)} detail="Promedio visible" />
+      <section className="metric-grid-clean central-status-metrics">
+        <Metric icon={CheckCircle2} label="Activas" value={formatNumber(counts.active)} detail="status ACTIVE" />
+        <Metric icon={RefreshCw} label="Sync" value={formatNumber(counts.sync)} detail="status SYNCED" />
+        <Metric icon={Trash2} label="Eliminadas" value={formatNumber(counts.deleted)} detail="status DELETED" />
       </section>
 
       <section className="ops-toolbar">
@@ -246,7 +297,7 @@ function CentralSection({ promotions, selected, setSelected, metrics, status, ch
 
       {error ? <div className="inline-alert">{error}</div> : null}
 
-      <section className="split-panel">
+      <section className="central-data-stack">
         <PromotionsTable items={promotions.data || []} selected={selected} onSelect={setSelected} loading={loading} />
         <PromotionDetail promotion={selected} />
       </section>
@@ -256,73 +307,243 @@ function CentralSection({ promotions, selected, setSelected, metrics, status, ch
   );
 }
 
-function OrdersSection({ orders, loading }) {
+function OrdersSection({ orders, loading: parentLoading }) {
+  const [status, setStatus] = useState("");
+  const [fromDate, setFromDate] = useState("2026-05-01");
+  const [toDate, setToDate] = useState("");
+  const [offset, setOffset] = useState(0);
+  const [ordersData, setOrdersData] = useState(orders);
+  const [loading, setLoading] = useState(parentLoading);
+  const [error, setError] = useState("");
+  const limit = 50;
+
+  useEffect(() => {
+    const abortController = new AbortController();
+
+    async function loadOrders() {
+      setLoading(true);
+      setError("");
+
+      const params = new URLSearchParams({
+        limit: String(limit),
+        offset: String(offset),
+        fromDate: `${fromDate} 00:00:00`,
+        groupBy: "day"
+      });
+
+      if (toDate) params.set("toDate", `${toDate} 23:59:59`);
+      if (status) params.set("status", status);
+
+      try {
+        const response = await fetch(`/api/orders?${params}`, { signal: abortController.signal });
+        if (!response.ok) throw new Error("No se pudieron cargar ordenes");
+        setOrdersData(await response.json());
+      } catch (requestError) {
+        if (requestError.name !== "AbortError") setError(requestError.message);
+      } finally {
+        if (!abortController.signal.aborted) setLoading(false);
+      }
+    }
+
+    loadOrders();
+    return () => abortController.abort();
+  }, [fromDate, offset, status, toDate]);
+
+  function changeStatus(nextStatus) {
+    setStatus(nextStatus);
+    setOffset(0);
+  }
+
+  const overview = ordersData?.overview || {};
+  const byStatus = ordersData?.byStatus || [];
+  const paidTimeseries = ordersData?.paidTimeseries || ordersData?.timeseries || [];
+  const cancelledTimeseries = ordersData?.cancelledTimeseries || [];
+
   return (
-    <section className="clean-card">
-      <SectionHead title="Ordenes de promociones" text="Ordenes que entran por campañas y promociones activas." />
-      <div className="table-scroll-clean">
-        <table className="clean-table">
-          <thead>
-            <tr>
-              <th>Orden</th>
-              <th>Item</th>
-              <th>Promocion</th>
-              <th>Estado</th>
-              <th>Monto</th>
-              <th>Fecha</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? <SkeletonRows columns={6} /> : (orders.data || []).map((order) => (
-              <tr key={order.id}>
-                <td><strong>{order.id}</strong></td>
-                <td>{order.itemId || "-"}</td>
-                <td>{order.promotionId || "-"}</td>
-                <td><span className="soft-badge">{order.status || "-"}</span></td>
-                <td>{formatCurrency(order.grossAmount)}</td>
-                <td>{formatDateTime(order.createdAt)}</td>
-              </tr>
+    <div className="module-stack">
+      <section className="metric-grid-clean orders-metrics">
+        <Metric icon={ClipboardList} label="Ordenes" value={formatNumber(overview.totalOrders || 0)} detail="Con aporte ML" />
+        <Metric icon={Megaphone} label="Aporte ML" value={formatCurrency(overview.totalAporteMl || 0)} detail={`Promedio ${formatCurrency(overview.avgAporteMl || 0)}`} />
+        <Metric icon={Store} label="Revenue" value={formatCurrency(overview.totalRevenue || 0)} detail={`Ticket ${formatCurrency(overview.avgTicket || 0)}`} />
+      </section>
+
+      <section className="ops-toolbar orders-toolbar">
+        <div className="orders-date-filters">
+          <label>
+            Analytics desde
+            <input type="date" value={fromDate} onChange={(event) => { setFromDate(event.target.value); setOffset(0); }} />
+          </label>
+          <label>
+            Analytics hasta
+            <input type="date" value={toDate} onChange={(event) => { setToDate(event.target.value); setOffset(0); }} />
+          </label>
+        </div>
+        <div className="filter-tabs">
+          {orderStatusFilters.map((filter) => (
+            <button key={filter.value || "all"} className={status === filter.value ? "is-active" : ""} onClick={() => changeStatus(filter.value)}>
+              {filter.label}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {error ? <div className="inline-alert">{error}</div> : null}
+
+      <div className="orders-analytics-grid">
+        <section className="clean-card">
+          <SectionHead title="Aporte ML por fecha" text="Pagadas y canceladas desde analytics/aporte-ml/timeseries." />
+          <AporteMlChart paidItems={paidTimeseries} cancelledItems={cancelledTimeseries} loading={loading} />
+        </section>
+
+        <section className="clean-card">
+          <SectionHead title="Por estado" text="Ordenes, revenue y aporte agrupados." />
+          <div className="status-breakdown">
+            {loading ? <LoadingBlock label="Cargando estados" compact /> : byStatus.map((item) => (
+              <article key={item.status}>
+                <span className="soft-badge">{item.status}</span>
+                <strong>{formatNumber(item.orders)} ordenes</strong>
+                <small>{formatCurrency(item.aporteMl)} aporte · {formatCurrency(item.revenue)} revenue</small>
+              </article>
             ))}
-          </tbody>
-        </table>
+            {!loading && !byStatus.length ? <div className="panel-placeholder">No hay estados para mostrar.</div> : null}
+          </div>
+        </section>
       </div>
-    </section>
+
+      <section className="clean-card">
+        <SectionHead title="Ordenes con aporte ML" text="Datos desde /api/mercadolibre/orders/aporte-ml." />
+        <div className="table-scroll-clean">
+          <table className="clean-table orders-table">
+            <thead>
+              <tr>
+                <th>Nro venta</th>
+                <th>SKU / Producto</th>
+                <th>Estado</th>
+                <th>Aporte ML</th>
+                <th>Precio venta</th>
+                <th>Ubicacion</th>
+                <th>Fecha</th>
+                <th>Links</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? <TableLoadingRow columns={8} label="Cargando ordenes" /> : (ordersData?.data || []).map((order) => (
+                <tr key={order.id || order.nroVenta}>
+                  <td><strong>{order.nroVenta || order.id}</strong><small>{order.id}</small></td>
+                  <td><strong>{order.sku || "-"}</strong><small>{order.nombreProducto || "-"}</small></td>
+                  <td><span className="soft-badge">{order.estadoOrden || order.status || "-"}</span></td>
+                  <td><strong>{formatCurrency(order.aporteMl)}</strong></td>
+                  <td>{formatCurrency(order.precioVenta)}</td>
+                  <td><strong>{order.ciudad || "-"}</strong><small>{order.provincia || "-"}</small></td>
+                  <td>{formatDateTime(order.fechaVenta)}</td>
+                  <td>
+                    <div className="order-links">
+                      {order.linkMl ? <a href={order.linkMl} target="_blank" rel="noreferrer">ML</a> : null}
+                      {order.linkAmazon ? <a href={order.linkAmazon} target="_blank" rel="noreferrer">Amazon</a> : null}
+                      {!order.linkMl && !order.linkAmazon ? "-" : null}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {!loading && !(ordersData?.data || []).length ? <tr><td colSpan="8" className="empty-cell">No hay ordenes para este filtro.</td></tr> : null}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <footer className="pagination-clean">
+        <span>Mostrando {formatNumber(ordersData?.count || 0)} de {formatNumber(ordersData?.total || 0)} · offset {formatNumber(ordersData?.offset || 0)}</span>
+        <div>
+          <button onClick={() => setOffset((value) => Math.max(0, value - limit))} disabled={loading || offset <= 0}><ChevronLeft size={18} /></button>
+          <button onClick={() => setOffset(ordersData?.nextOffset || offset + limit)} disabled={loading || !ordersData?.hasNext}><ChevronRight size={18} /></button>
+        </div>
+      </footer>
+    </div>
   );
 }
 
 function CatalogSection({ catalog, loading }) {
+  const [selectedType, setSelectedType] = useState("");
+  const catalogItems = catalog.data || [];
+  const typeSummary = useMemo(() => {
+    const summary = catalogItems.reduce((acc, promotion) => {
+      const type = promotion.type || "SIN_TIPO";
+      if (!acc[type]) acc[type] = { type, count: 0, candidates: 0, names: [] };
+      acc[type].count += 1;
+      acc[type].candidates += Number(promotion.totalCandidates || 0);
+      if (promotion.name && acc[type].names.length < 3) acc[type].names.push(promotion.name);
+      return acc;
+    }, {});
+
+    return Object.values(summary).sort((a, b) => b.count - a.count || a.type.localeCompare(b.type));
+  }, [catalogItems]);
+  const visibleCatalog = selectedType
+    ? catalogItems.filter((promotion) => (promotion.type || "SIN_TIPO") === selectedType)
+    : catalogItems;
+
   return (
-    <section className="clean-card">
-      <SectionHead title="Catalogo de promociones" text="Campañas disponibles para participar, analizar o accionar." />
-      <div className="table-scroll-clean">
-        <table className="clean-table">
-          <thead>
-            <tr>
-              <th>Campaña</th>
-              <th>ID</th>
-              <th>Tipo</th>
-              <th>Estado</th>
-              <th>Inicio</th>
-              <th>Fin</th>
-              <th>Deadline</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? <SkeletonRows columns={7} /> : (catalog.data || []).map((promotion) => (
-              <tr key={promotion._id || promotion.promotionId}>
-                <td><strong>{promotion.name}</strong></td>
-                <td>{promotion.promotionId}</td>
-                <td>{promotion.type}</td>
-                <td><span className="soft-badge">{promotion.status}</span></td>
-                <td>{formatDateTime(promotion.startDate)}</td>
-                <td>{formatDateTime(promotion.finishDate)}</td>
-                <td>{formatDateTime(promotion.deadlineDate)}</td>
+    <div className="module-stack">
+      <section className="catalog-summary-grid">
+        {loading ? <LoadingBlock label="Cargando resumen de catalogo" compact /> : typeSummary.map((group) => (
+          <article className="clean-card catalog-summary-card" key={group.type}>
+            <span>{group.type}</span>
+            <strong>{formatNumber(group.count)} promociones</strong>
+            <small>{formatNumber(group.candidates)} candidatos totales</small>
+            <p>{group.names.join(", ")}</p>
+          </article>
+        ))}
+      </section>
+
+      <section className="ops-toolbar catalog-toolbar">
+        <div>
+          <strong>{formatNumber(visibleCatalog.length)} visibles</strong>
+          <span> de {formatNumber(catalog.total || catalogItems.length)} promociones</span>
+        </div>
+        <div className="filter-tabs">
+          <button className={selectedType === "" ? "is-active" : ""} onClick={() => setSelectedType("")}>Todos</button>
+          {typeSummary.map((group) => (
+            <button key={group.type} className={selectedType === group.type ? "is-active" : ""} onClick={() => setSelectedType(group.type)}>
+              {group.type}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="clean-card">
+        <SectionHead title="Catalogo de promociones" text="Campañas disponibles para participar, analizar o accionar." />
+        <div className="table-scroll-clean">
+          <table className="clean-table catalog-table">
+            <thead>
+              <tr>
+                <th>Campaña</th>
+                <th>ID</th>
+                <th>Tipo</th>
+                <th>Estado</th>
+                <th>Candidatos</th>
+                <th>Inicio</th>
+                <th>Fin</th>
+                <th>Deadline</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
+            </thead>
+            <tbody>
+              {loading ? <TableLoadingRow columns={8} label="Cargando catalogo" /> : visibleCatalog.map((promotion) => (
+                <tr key={promotion._id || promotion.promotionId}>
+                  <td><strong>{promotion.name}</strong><small>{promotion._id || "-"}</small></td>
+                  <td>{promotion.promotionId}</td>
+                  <td>{promotion.type}</td>
+                  <td><span className="soft-badge">{promotion.status}</span></td>
+                  <td><strong>{formatNumber(promotion.totalCandidates || 0)}</strong></td>
+                  <td>{formatDateTime(promotion.startDate)}</td>
+                  <td>{formatDateTime(promotion.finishDate)}</td>
+                  <td>{formatDateTime(promotion.deadlineDate)}</td>
+                </tr>
+              ))}
+              {!loading && !visibleCatalog.length ? <tr><td colSpan="8" className="empty-cell">No hay promociones para este tipo.</td></tr> : null}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -334,11 +555,12 @@ function ActionsSection() {
   async function run(action) {
     setRunning(action);
     setResult("");
+    const payload = action === "resync" ? { updatedBy: "arturo" } : { promotionId };
 
     const response = await fetch("/api/actions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, payload: { promotionId } })
+      body: JSON.stringify({ action, payload })
     });
 
     const data = await response.json().catch(() => ({}));
@@ -351,9 +573,18 @@ function ActionsSection() {
       <section className="clean-card">
         <SectionHead title="Acciones masivas" text="Operaciones sobre la central. Dejadas separadas para reducir errores." />
         <div className="action-list">
-          <button onClick={() => run("activateAll")} disabled={Boolean(running)}><PlayCircle size={18} /> Activar todas las aptas</button>
-          <button onClick={() => run("deactivateAll")} disabled={Boolean(running)}><Trash2 size={18} /> Desactivar todas</button>
-          <button onClick={() => run("resync")} disabled={Boolean(running)}><RefreshCw size={18} /> Sincronizar central</button>
+          <button onClick={() => run("activateAll")} disabled={Boolean(running)}>
+            {running === "activateAll" ? <LoadingSpinner size="sm" label="Activando promociones" /> : <PlayCircle size={18} />}
+            Activar todas las aptas
+          </button>
+          <button onClick={() => run("deactivateAll")} disabled={Boolean(running)}>
+            {running === "deactivateAll" ? <LoadingSpinner size="sm" label="Desactivando promociones" /> : <Trash2 size={18} />}
+            Desactivar todas
+          </button>
+          <button onClick={() => run("resync")} disabled={Boolean(running)}>
+            {running === "resync" ? <LoadingSpinner size="sm" label="Sincronizando central" /> : <RefreshCw size={18} />}
+            Sincronizar central
+          </button>
         </div>
       </section>
 
@@ -364,10 +595,16 @@ function ActionsSection() {
           <input value={promotionId} onChange={(event) => setPromotionId(event.target.value)} placeholder="P-MLA17339026" />
         </label>
         <button className="primary-action" onClick={() => run("activateCampaign")} disabled={!promotionId || Boolean(running)}>
-          <PlayCircle size={18} />
-          Activar campaña
+          {running === "activateCampaign" ? <LoadingSpinner size="sm" label="Activando campaña" /> : <PlayCircle size={18} />}
+          {running === "activateCampaign" ? "Activando..." : "Activar campaña"}
         </button>
-        {result ? <p className="action-result">{running ? "Procesando..." : result}</p> : null}
+        {running ? (
+          <p className="action-result action-result--loading">
+            <LoadingSpinner size="sm" label="Procesando accion" />
+            Procesando accion...
+          </p>
+        ) : null}
+        {result ? <p className="action-result">{result}</p> : null}
       </section>
     </div>
   );
@@ -390,7 +627,7 @@ function ProfileSection({ profile, loading }) {
   return (
     <section className="clean-card profile-card">
       <SectionHead title="Usuario logueado" text="Datos de sesion validados contra auth-api." />
-      {loading ? <div className="panel-placeholder">Cargando perfil...</div> : (
+      {loading ? <LoadingBlock label="Cargando perfil" /> : (
         <div className="profile-grid">
           <Info label="Nombre" value={profile?.name || "-"} />
           <Info label="Email" value={profile?.email || "-"} />
@@ -422,41 +659,165 @@ function NotificationsSection({ notifications }) {
   );
 }
 
+function ConfigurationSection({ profile, nightMode, setNightMode, onLogout }) {
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+
+  async function inviteUser(event) {
+    event.preventDefault();
+    if (!inviteEmail) return;
+
+    setSaving(true);
+    setMessage("");
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    setSaving(false);
+    setMessage(`Invitacion preparada para ${inviteEmail}.`);
+    setInviteEmail("");
+  }
+
+  return (
+    <div className="settings-grid">
+      <section className="clean-card settings-card">
+        <SectionHead title="Configuracion del panel" text="Preferencias visuales y operativas del command center." />
+        <div className="settings-list">
+          <div className="settings-row">
+            <div className="settings-row-icon"><Moon size={18} /></div>
+            <div>
+              <strong>Modo nocturno</strong>
+              <p>Activa una vista oscura para operar con menos brillo.</p>
+            </div>
+            <button className={nightMode ? "switch-control is-on" : "switch-control"} type="button" onClick={() => setNightMode((value) => !value)} aria-pressed={nightMode}>
+              <span />
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="clean-card settings-card">
+        <SectionHead title="Datos de usuario" text="Informacion de la sesion actual." />
+        <div className="profile-grid settings-profile">
+          <Info label="Nombre" value={profile?.name || "-"} />
+          <Info label="Email" value={profile?.email || "-"} />
+          <Info label="Rol" value={profile?.role || "operator"} />
+          <Info label="ID" value={profile?.id || "-"} />
+        </div>
+        <div className="settings-actions">
+          <button className="logout-action" type="button" onClick={onLogout}>
+            <LogOut size={18} />
+            Cerrar sesion
+          </button>
+        </div>
+      </section>
+
+      <section className="clean-card settings-card settings-card--wide">
+        <SectionHead title="Invitar usuario" text="Carga el email de una persona para sumarla al panel." />
+        <form className="invite-form" onSubmit={inviteUser}>
+          <label>
+            Email del usuario
+            <span>
+              <Mail size={18} />
+              <input type="email" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="usuario@empresa.com" />
+            </span>
+          </label>
+          <button className="primary-action invite-button" type="submit" disabled={!inviteEmail || saving}>
+            {saving ? <LoadingSpinner size="sm" label="Preparando invitacion" /> : <UserPlus size={18} />}
+            {saving ? "Invitando..." : "Invitar usuario"}
+          </button>
+        </form>
+        {message ? <p className="action-result">{message}</p> : null}
+      </section>
+    </div>
+  );
+}
+
 function PromotionsTable({ items, selected, onSelect, loading }) {
   return (
     <section className="clean-card central-table">
-      <SectionHead title="Promociones en Mongo" text="Vista paginada por estado, optimizada para volumen alto." />
-      <div className="table-scroll-clean">
-        <table className="clean-table">
+      <SectionHead title="Promociones en Mongo" text="Listado completo desde /promotions, con scroll para volumen alto." />
+      <div className="table-scroll-clean central-promotions-scroll">
+        <table className="clean-table promotions-full-table">
           <thead>
             <tr>
               <th>Promocion</th>
-              <th>Item / SKU</th>
-              <th>Precio</th>
-              <th>Profit</th>
-              <th>Margen</th>
               <th>Estado</th>
-              <th>Ultima accion</th>
+              <th>Item</th>
+              <th>SKU</th>
+              <th>Categoria</th>
+              <th>Listing</th>
+              <th>Tipo</th>
+              <th>Inicio</th>
+              <th>Fin</th>
+              <th>Deadline</th>
+              <th>Precio original</th>
+              <th>Precio sugerido</th>
+              <th>Min / Max</th>
+              <th>Costo</th>
+              <th>Profit</th>
+              <th>Rentab.</th>
+              <th>Margen</th>
+              <th>Profitable</th>
+              <th>Should pause</th>
+              <th>Resigna total</th>
+              <th>ML resigna</th>
+              <th>Seller resigna</th>
+              <th>Offer</th>
+              <th>Sync</th>
+              <th>Activacion</th>
+              <th>Updated by</th>
+              <th>Proceso</th>
+              <th>Motivo</th>
+              <th>Audit</th>
+              <th>Updated</th>
             </tr>
           </thead>
           <tbody>
-            {loading ? <SkeletonRows columns={7} /> : items.map((item) => (
+            {loading ? <TableLoadingRow columns={30} label="Cargando promociones" /> : items.map((item) => (
               <tr key={item._id || item.itemId} className={selected?._id === item._id ? "is-selected" : ""} onClick={() => onSelect(item)}>
-                <td><strong>{item.name}</strong><small>{item.promotionId} · {item.type}</small></td>
-                <td><strong>{item.itemId}</strong><small>{item.sku || "-"} · {item.categoryId || "-"}</small></td>
-                <td><strong>{formatCurrency(item.prices?.suggestedPrice)}</strong><small>Base {formatCurrency(item.prices?.originalPrice)}</small></td>
-                <td className={item.economics?.profitable ? "positive" : "negative"}><strong>{formatCurrency(item.economics?.profit)}</strong><small>{formatPercent(item.economics?.profitability)}</small></td>
-                <td><strong>{formatPercent(item.economics?.margin)}</strong><small>Costo {formatCurrency(item.economics?.cost)}</small></td>
+                <td><strong>{item.name || "-"}</strong><small>{item.promotionId || item._id || "-"}</small></td>
                 <td><StatusPill status={item.status} /></td>
-                <td><strong>{item.metadata?.sourceProcess || "-"}</strong><small>{formatDateTime(item.updatedAt)}</small></td>
+                <td><strong>{item.itemId || "-"}</strong></td>
+                <td>{item.sku || "-"}</td>
+                <td>{item.categoryId || "-"}</td>
+                <td>{item.listingTypeId || "-"}</td>
+                <td>{item.type || "-"}</td>
+                <td>{formatDateTime(item.startDate)}</td>
+                <td>{formatDateTime(item.finishDate)}</td>
+                <td>{formatDateTime(item.deadlineDate)}</td>
+                <td>{formatCurrency(item.prices?.originalPrice)}</td>
+                <td><strong>{formatCurrency(item.prices?.suggestedPrice)}</strong></td>
+                <td><strong>{formatCurrency(item.prices?.minPrice)}</strong><small>{formatCurrency(item.prices?.maxPrice)}</small></td>
+                <td>{formatCurrency(item.economics?.cost)}</td>
+                <td className={item.economics?.profitable ? "positive" : "negative"}><strong>{formatCurrency(item.economics?.profit)}</strong><small>{formatPercent(item.economics?.profitability)}</small></td>
+                <td>{formatPercent(item.economics?.profitability)}</td>
+                <td>{formatPercent(item.economics?.margin)}</td>
+                <td><BooleanBadge value={item.economics?.profitable} /></td>
+                <td><BooleanBadge value={item.economics?.shouldPause} /></td>
+                <td><strong>{formatPercent(item.terms?.resignation?.total)}</strong></td>
+                <td><strong>{formatPercent(item.terms?.resignation?.mercadolibre?.percentage)}</strong><small>{formatCurrency(item.terms?.resignation?.mercadolibre?.amount)}</small></td>
+                <td><strong>{formatPercent(item.terms?.resignation?.seller?.percentage)}</strong><small>{formatCurrency(item.terms?.resignation?.seller?.amount)}</small></td>
+                <td>{item.offerId || "-"}</td>
+                <td>{formatDateTime(item.metadata?.syncedAt)}</td>
+                <td>{formatDateTime(item.metadata?.activatedAt)}</td>
+                <td>{item.metadata?.updatedBy || "-"}</td>
+                <td>{item.metadata?.sourceProcess || "-"}</td>
+                <td className="reason-cell">{item.metadata?.statusReason || "-"}</td>
+                <td>{formatNumber((item.auditTrail || []).length)}</td>
+                <td>{formatDateTime(item.updatedAt)}</td>
               </tr>
             ))}
-            {!loading && !items.length ? <tr><td colSpan="7" className="empty-cell">No hay promociones para este filtro.</td></tr> : null}
+            {!loading && !items.length ? <tr><td colSpan="30" className="empty-cell">No hay promociones para este filtro.</td></tr> : null}
           </tbody>
         </table>
       </div>
     </section>
   );
+}
+
+function BooleanBadge({ value }) {
+  if (value === true) return <span className="boolean-badge is-yes">Si</span>;
+  if (value === false) return <span className="boolean-badge is-no">No</span>;
+  return <span className="boolean-badge">-</span>;
 }
 
 function PromotionDetail({ promotion }) {
@@ -548,12 +909,23 @@ function Pagination({ page, totalPages, onPage }) {
   );
 }
 
-function SkeletonRows({ columns }) {
-  return Array.from({ length: 8 }).map((_, index) => (
-    <tr key={index} className="skeleton-row-clean">
-      <td colSpan={columns}><span /></td>
+function TableLoadingRow({ columns, label }) {
+  return (
+    <tr className="table-loading-row">
+      <td colSpan={columns}>
+        <LoadingBlock label={label} compact />
+      </td>
     </tr>
-  ));
+  );
+}
+
+function LoadingBlock({ label, compact = false }) {
+  return (
+    <div className={compact ? "loading-block loading-block--compact" : "loading-block"}>
+      <LoadingSpinner label={label} />
+      <span>{label}...</span>
+    </div>
+  );
 }
 
 function buildNotifications(promotions = [], orders = []) {
@@ -583,8 +955,8 @@ function titleFor(section) {
     catalog: "Catalogo de promociones",
     actions: "Acciones operativas",
     logs: "Logs de DataDog",
-    profile: "Perfil",
-    notifications: "Notificaciones"
+    notifications: "Notificaciones",
+    configuration: "Configuracion"
   }[section];
 }
 
@@ -595,7 +967,7 @@ function descriptionFor(section) {
     catalog: "Campañas disponibles para activar, auditar o cruzar contra la central.",
     actions: "Activaciones, desactivaciones y sincronizaciones controladas.",
     logs: "Acceso directo al stream operativo para investigar procesos.",
-    profile: "Informacion del usuario autenticado con auth-api.",
-    notifications: "Ultimos procesos, cambios de estado y eventos importantes."
+    notifications: "Ultimos procesos, cambios de estado y eventos importantes.",
+    configuration: "Preferencias del panel, administracion de usuario e invitaciones."
   }[section];
 }

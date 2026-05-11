@@ -1,4 +1,5 @@
 const DEFAULT_BASE_URL = "http://cpe.loquieroaca.com";
+const DEFAULT_TIMEOUT_MS = 45000;
 
 export class CpeClient {
   constructor({ baseUrl = process.env.CPE_API_BASE_URL || DEFAULT_BASE_URL, token } = {}) {
@@ -8,7 +9,7 @@ export class CpeClient {
 
   async get(path, params = {}) {
     const url = new URL(`${this.baseUrl}${path}`);
-    const timeout = AbortSignal.timeout(Number(process.env.CPE_API_TIMEOUT_MS || 8000));
+    const timeout = AbortSignal.timeout(Number(process.env.CPE_API_TIMEOUT_MS || DEFAULT_TIMEOUT_MS));
 
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== "") {
@@ -37,7 +38,7 @@ export class CpeClient {
 
   async post(path, body = {}) {
     const url = new URL(`${this.baseUrl}${path}`);
-    const timeout = AbortSignal.timeout(Number(process.env.CPE_API_TIMEOUT_MS || 8000));
+    const timeout = AbortSignal.timeout(Number(process.env.CPE_API_TIMEOUT_MS || DEFAULT_TIMEOUT_MS));
 
     const response = await fetch(url, {
       method: "POST",

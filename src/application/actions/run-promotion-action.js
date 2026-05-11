@@ -4,7 +4,7 @@ const ACTION_PATHS = {
   activateCampaign: "/promotions/actions/activate-campaign",
   activateAll: "/promotions/actions/activate-all",
   deactivateAll: "/promotions/actions/deactivate-all",
-  resync: "/promotions/actions/sync"
+  resync: "/promotions/sync"
 };
 
 export async function runPromotionAction({ token, action, payload }) {
@@ -17,5 +17,9 @@ export async function runPromotionAction({ token, action, payload }) {
     throw error;
   }
 
-  return client.post(path, payload);
+  const body = action === "resync"
+    ? { updatedBy: payload.updatedBy || "arturo" }
+    : payload;
+
+  return client.post(path, body);
 }

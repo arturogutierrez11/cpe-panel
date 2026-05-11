@@ -4,9 +4,9 @@ import { samplePromotions } from "@/src/domain/promotions/sample-data";
 export async function listPromotions({ token, searchParams }) {
   const client = new CpeClient({ token });
   const query = {
-    status: searchParams.get("status") || "ACTIVE",
+    status: searchParams.get("status") || "",
     page: searchParams.get("page") || "1",
-    limit: searchParams.get("limit") || "50",
+    limit: searchParams.get("limit") || "100",
     q: searchParams.get("q") || "",
     itemId: searchParams.get("itemId") || "",
     sku: searchParams.get("sku") || "",
@@ -16,7 +16,8 @@ export async function listPromotions({ token, searchParams }) {
   };
 
   try {
-    return normalizePromotionsResponse(await client.get("/promotions", query), query);
+    const requestQuery = Object.fromEntries(Object.entries(query).filter(([, value]) => value !== ""));
+    return normalizePromotionsResponse(await client.get("/promotions", requestQuery), query);
   } catch (error) {
     if (process.env.NODE_ENV === "production") {
       throw error;

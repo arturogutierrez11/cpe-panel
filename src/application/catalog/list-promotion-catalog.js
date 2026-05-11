@@ -5,14 +5,14 @@ export async function listPromotionCatalog({ token, searchParams }) {
   const client = new CpeClient({ token });
   const query = {
     page: searchParams.get("page") || "1",
-    limit: searchParams.get("limit") || "50",
+    limit: searchParams.get("limit") || "100",
     q: searchParams.get("q") || "",
     status: searchParams.get("status") || "",
     type: searchParams.get("type") || ""
   };
 
   try {
-    const endpoint = process.env.CPE_PROMOTION_CATALOG_PATH || "/promotions/catalog";
+    const endpoint = process.env.CPE_PROMOTION_CATALOG_PATH || "/promotions/catalogs";
     return normalizeCatalogResponse(await client.get(endpoint, query), query);
   } catch (error) {
     if (process.env.NODE_ENV === "production") {
