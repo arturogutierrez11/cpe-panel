@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   Bell,
-  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
@@ -31,7 +30,7 @@ import { AporteMlChart } from "@/components/dashboard/aporte-ml-chart";
 import { formatCurrency, formatDateTime, formatNumber, formatPercent } from "@/src/shared/formatters";
 
 const PAGE_SIZE = 100;
-const DATADOG_URL = "https://us5.datadoghq.com/logs?query=&agg_m=count&agg_m_source=base&agg_t=count&cols=host%2Cservice&fromUser=true&messageDisplay=inline&refresh_mode=sliding&storage=hot&stream_sort=desc&viz=stream&from_ts=1776178805789&to_ts=1776179705789&live=true";
+const DATADOG_URL = "https://us5.datadoghq.com/logs/livetail?query=service%3Acentral-promos-enginee%20MLA17373038&agg_m=count&agg_m_source=base&agg_t=count&cols=host%2Cservice&messageDisplay=inline&refresh_mode=sliding&storage=driveline&stream_sort=desc&viz=stream&from_ts=1778544856723&to_ts=1778545756723&live=true";
 
 const navItems = [
   { id: "orders", label: "Ordenes", icon: ClipboardList },
@@ -55,9 +54,16 @@ const orderStatusFilters = [
   { value: "cancelled", label: "Canceladas" }
 ];
 
+const emptyPromotionStats = {
+  total: 0,
+  smart: { total: 0, active: 0, synced: 0, deleted: 0, finished: 0, failedActivation: 0 },
+  deal: { total: 0, active: 0, synced: 0, deleted: 0, finished: 0, failedActivation: 0 },
+  preNegotiated: { total: 0, active: 0, synced: 0, deleted: 0, finished: 0, failedActivation: 0 }
+};
+
 async function readOptionalJson(result) {
   if (result.status !== "fulfilled" || !result.value.ok) {
-    return { total: 0 };
+    return {};
   }
 
   return result.value.json();
@@ -70,7 +76,7 @@ export function PromotionsDashboard() {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(null);
   const [promotions, setPromotions] = useState({ data: [], total: 0, page: 1, limit: PAGE_SIZE, totalPages: 1 });
-  const [promotionCounts, setPromotionCounts] = useState({ active: 0, sync: 0, deleted: 0 });
+  const [promotionStats, setPromotionStats] = useState(emptyPromotionStats);
   const [orders, setOrders] = useState({ data: [], total: 0 });
   const [catalog, setCatalog] = useState({ data: [], total: 0, page: 1, limit: PAGE_SIZE, totalPages: 1 });
   const [profile, setProfile] = useState(null);
@@ -95,12 +101,10 @@ export function PromotionsDashboard() {
       if (query) params.set("q", query);
 
       try {
-        const [promotionsResult, ordersResult, activeResult, syncResult, deletedResult] = await Promise.allSettled([
+        const [promotionsResult, ordersResult, statsResult] = await Promise.allSettled([
           fetch(`/api/promotions?${params}`, { signal: abortController.signal }),
           fetch("/api/orders?limit=12", { signal: abortController.signal }),
-          fetch("/api/promotions?status=ACTIVE&page=1&limit=1", { signal: abortController.signal }),
-          fetch("/api/promotions?status=SYNCED&page=1&limit=1", { signal: abortController.signal }),
-          fetch("/api/promotions?status=DELETED&page=1&limit=1", { signal: abortController.signal })
+          fetch("/api/promotion-stats", { signal: abortController.signal })
         ]);
 
         if (promotionsResult.status === "rejected") {
@@ -119,18 +123,10 @@ export function PromotionsDashboard() {
         const promotionsData = await promotionsResponse.json();
         const ordersResponse = ordersResult.status === "fulfilled" ? ordersResult.value : null;
         const ordersData = ordersResponse?.ok ? await ordersResponse.json() : { data: [], total: 0 };
-        const [activeData, syncData, deletedData] = await Promise.all([
-          readOptionalJson(activeResult),
-          readOptionalJson(syncResult),
-          readOptionalJson(deletedResult)
-        ]);
+        const statsData = await readOptionalJson(statsResult);
 
         setPromotions(promotionsData);
-        setPromotionCounts({
-          active: activeData.total || 0,
-          sync: syncData.total || 0,
-          deleted: deletedData.total || 0
-        });
+        setPromotionStats({ ...emptyPromotionStats, ...statsData });
         setOrders(ordersData);
         setSelected((current) => current || promotionsData.data?.[0] || null);
       } catch (requestError) {
@@ -249,7 +245,7 @@ export function PromotionsDashboard() {
             promotions={promotions}
             selected={selected}
             setSelected={setSelected}
-            counts={promotionCounts}
+            stats={promotionStats}
             status={status}
             changeStatus={changeStatus}
             query={query}
@@ -272,14 +268,10 @@ export function PromotionsDashboard() {
   );
 }
 
-function CentralSection({ promotions, selected, setSelected, counts, status, changeStatus, query, setQuery, page, setPage, loading, error }) {
+function CentralSection({ promotions, selected, setSelected, stats, status, changeStatus, query, setQuery, page, setPage, loading, error }) {
   return (
     <div className="module-stack">
-      <section className="metric-grid-clean central-status-metrics">
-        <Metric icon={CheckCircle2} label="Activas" value={formatNumber(counts.active)} detail="status ACTIVE" />
-        <Metric icon={RefreshCw} label="Sync" value={formatNumber(counts.sync)} detail="status SYNCED" />
-        <Metric icon={Trash2} label="Eliminadas" value={formatNumber(counts.deleted)} detail="status DELETED" />
-      </section>
+      <PromotionStats stats={stats} loading={loading} />
 
       <section className="ops-toolbar">
         <div className="search-box-clean">
@@ -304,6 +296,43 @@ function CentralSection({ promotions, selected, setSelected, counts, status, cha
 
       <Pagination page={page} totalPages={promotions.totalPages || 1} onPage={setPage} />
     </div>
+  );
+}
+
+function PromotionStats({ stats, loading }) {
+  const groups = [
+    { key: "smart", label: "SMART", data: stats.smart },
+    { key: "deal", label: "DEAL", data: stats.deal },
+    { key: "preNegotiated", label: "PRE_NEGOTIATED", data: stats.preNegotiated }
+  ];
+
+  if (loading) {
+    return <LoadingBlock label="Cargando estadisticas de promociones" compact />;
+  }
+
+  return (
+    <section className="promotion-stats-grid">
+      <article className="clean-card promotion-total-card">
+        <span>Total promociones</span>
+        <strong>{formatNumber(stats.total || 0)}</strong>
+       
+      </article>
+      {groups.map((group) => (
+        <article className="clean-card promotion-type-card" key={group.key}>
+          <div className="promotion-type-head">
+            <span>{group.label}</span>
+            <strong>{formatNumber(group.data?.total || 0)}</strong>
+          </div>
+          <div className="promotion-type-breakdown">
+            <Info label="Activas" value={formatNumber(group.data?.active || 0)} />
+            <Info label="Synced" value={formatNumber(group.data?.synced || 0)} />
+            <Info label="Eliminadas" value={formatNumber(group.data?.deleted || 0)} />
+            <Info label="Finalizadas" value={formatNumber(group.data?.finished || 0)} />
+            <Info label="Fallidas act." value={formatNumber(group.data?.failedActivation || 0)} />
+          </div>
+        </article>
+      ))}
+    </section>
   );
 }
 
@@ -613,12 +642,25 @@ function ActionsSection() {
 function LogsSection() {
   return (
     <section className="clean-card logs-card">
-      <SectionHead title="Logs DataDog" text="Acceso directo al stream de logs operativo de la central." />
-      <a className="datadog-link" href={DATADOG_URL} target="_blank" rel="noreferrer">
-        <Activity size={20} />
-        Abrir logs en DataDog
-        <ExternalLink size={17} />
-      </a>
+      <div className="logs-head">
+        <SectionHead title="Logs DataDog" text="Live tail de central-promos-enginee filtrado por MLA17373038." />
+        <a className="datadog-link" href={DATADOG_URL} target="_blank" rel="noreferrer">
+          <Activity size={18} />
+          Abrir en DataDog
+          <ExternalLink size={16} />
+        </a>
+      </div>
+      <div className="datadog-frame-shell">
+        <iframe
+          title="DataDog live tail central promos"
+          src={DATADOG_URL}
+          loading="lazy"
+          referrerPolicy="no-referrer-when-downgrade"
+        />
+      </div>
+      <p className="datadog-note">
+        Si DataDog bloquea el iframe por permisos de seguridad, usa el boton para abrir la misma vista en una pestaña nueva.
+      </p>
     </section>
   );
 }

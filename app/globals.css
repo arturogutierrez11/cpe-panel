@@ -1319,13 +1319,54 @@ tbody tr.is-picked {
   color: #f7d046;
 }
 
-.logs-card,
 .profile-card {
   max-width: 780px;
 }
 
+.logs-card {
+  min-height: calc(100vh - 150px);
+}
+
+.logs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.logs-head .section-head-clean {
+  flex: 1;
+  border-bottom: 0;
+}
+
 .datadog-link {
+  flex: 0 0 auto;
+  margin: 0 16px 0 0;
+}
+
+.datadog-frame-shell {
+  height: calc(100vh - 260px);
+  min-height: 560px;
   margin: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0f1722;
+  overflow: hidden;
+}
+
+.datadog-frame-shell iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #ffffff;
+}
+
+.datadog-note {
+  margin: 0 16px 16px;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .notification-list {
@@ -1941,6 +1982,99 @@ tbody tr.is-picked {
   box-shadow: inset 3px 0 0 #3483fa;
 }
 
+.ops-sidebar {
+  gap: 14px;
+  padding: 16px 14px;
+  background: #f6f8fb;
+}
+
+.ops-brand {
+  gap: 10px;
+  margin-bottom: 6px;
+  border-color: #dde4ee;
+  padding: 14px 12px 15px;
+  background: #ffffff;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.055);
+}
+
+.ops-brand-media {
+  min-height: 78px;
+  border: 1px solid #eef2f7;
+  background: #fbfcfe;
+}
+
+.ops-brand-media img {
+  width: min(146px, 92%);
+  max-height: 70px;
+}
+
+.ops-brand-copy span {
+  color: #2968c8;
+  font-size: 10px;
+  letter-spacing: 0;
+}
+
+.ops-brand-copy strong {
+  max-width: 190px;
+  color: #182230;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.ops-nav {
+  gap: 5px;
+  padding: 4px 0;
+}
+
+.ops-nav button,
+.ops-logout {
+  min-height: 42px;
+  border-radius: 8px;
+  padding: 0 10px;
+  color: #475467;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.ops-nav button svg,
+.ops-logout svg {
+  width: 19px;
+  height: 19px;
+  border-radius: 7px;
+  padding: 2px;
+  color: #667085;
+  background: transparent;
+}
+
+.ops-nav button:hover,
+.ops-nav button.is-active,
+.ops-logout:hover,
+.ops-logout.is-active {
+  border-color: #dbeafe;
+  color: #1d4ed8;
+  background: #eef5ff;
+  box-shadow: none;
+}
+
+.ops-nav button:hover svg,
+.ops-nav button.is-active svg,
+.ops-logout:hover svg,
+.ops-logout.is-active svg {
+  color: #1d4ed8;
+  background: #dbeafe;
+}
+
+.ops-nav button.is-active,
+.ops-logout.is-active {
+  box-shadow: inset 3px 0 0 #3483fa;
+}
+
+.ops-logout {
+  margin-top: auto;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+}
+
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2069,6 +2203,88 @@ tbody tr.is-picked {
 
 .central-status-metrics {
   grid-template-columns: repeat(3, minmax(180px, 1fr));
+}
+
+.promotion-stats-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) repeat(3, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.promotion-total-card,
+.promotion-type-card {
+  padding: 16px;
+}
+
+.promotion-total-card {
+  display: grid;
+  align-content: center;
+  min-height: 172px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.promotion-total-card span,
+.promotion-total-card small,
+.promotion-type-head span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.promotion-total-card strong {
+  margin-top: 8px;
+  color: var(--text);
+  font-size: 34px;
+  line-height: 1;
+}
+
+.promotion-total-card small {
+  margin-top: 10px;
+  color: var(--blue);
+}
+
+.promotion-type-card {
+  display: grid;
+  gap: 14px;
+}
+
+.promotion-type-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.promotion-type-head span {
+  color: var(--blue);
+}
+
+.promotion-type-head strong {
+  color: var(--text);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.promotion-type-breakdown {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.promotion-type-breakdown .info-tile {
+  padding: 10px;
+  box-shadow: none;
+}
+
+.promotion-type-breakdown .info-tile span {
+  font-size: 10px;
+}
+
+.promotion-type-breakdown .info-tile strong {
+  font-size: 15px;
 }
 
 .orders-date-filters {
@@ -2566,6 +2782,16 @@ tbody tr.is-picked {
   }
 
   .status-breakdown {
+    grid-template-columns: 1fr;
+  }
+
+  .promotion-stats-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 820px) {
+  .promotion-stats-grid {
     grid-template-columns: 1fr;
   }
 }
