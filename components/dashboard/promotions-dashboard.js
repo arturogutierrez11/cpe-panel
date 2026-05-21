@@ -56,9 +56,9 @@ const orderStatusFilters = [
 
 const emptyPromotionStats = {
   total: 0,
-  smart: { total: 0, active: 0, synced: 0, deleted: 0, finished: 0, failedActivation: 0 },
-  deal: { total: 0, active: 0, synced: 0, deleted: 0, finished: 0, failedActivation: 0 },
-  preNegotiated: { total: 0, active: 0, synced: 0, deleted: 0, finished: 0, failedActivation: 0 }
+  smart: { total: 0, pending: 0, active: 0, paused: 0, synced: 0, deleted: 0, finished: 0, failedSync: 0, failedActivation: 0, failedDeactivation: 0 },
+  deal: { total: 0, pending: 0, active: 0, paused: 0, synced: 0, deleted: 0, finished: 0, failedSync: 0, failedActivation: 0, failedDeactivation: 0 },
+  preNegotiated: { total: 0, pending: 0, active: 0, paused: 0, synced: 0, deleted: 0, finished: 0, failedSync: 0, failedActivation: 0, failedDeactivation: 0 }
 };
 
 async function readOptionalJson(result) {
@@ -324,11 +324,15 @@ function PromotionStats({ stats, loading }) {
             <strong>{formatNumber(group.data?.total || 0)}</strong>
           </div>
           <div className="promotion-type-breakdown">
+            <Info label="Pendientes" value={formatNumber(group.data?.pending || 0)} />
             <Info label="Activas" value={formatNumber(group.data?.active || 0)} />
+            <Info label="Pausadas" value={formatNumber(group.data?.paused || 0)} />
             <Info label="Synced" value={formatNumber(group.data?.synced || 0)} />
             <Info label="Eliminadas" value={formatNumber(group.data?.deleted || 0)} />
             <Info label="Finalizadas" value={formatNumber(group.data?.finished || 0)} />
+            <Info label="Failed sync" value={formatNumber(group.data?.failedSync || 0)} />
             <Info label="Fallidas act." value={formatNumber(group.data?.failedActivation || 0)} />
+            <Info label="Fallidas desact." value={formatNumber(group.data?.failedDeactivation || 0)} />
           </div>
         </article>
       ))}
