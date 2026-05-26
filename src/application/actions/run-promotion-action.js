@@ -1,10 +1,11 @@
 import { CpeClient } from "@/src/infrastructure/http/cpe-client";
 
 const ACTION_PATHS = {
-  activateCampaign: "/promotions/actions/activate-campaign",
-  activateAll: "/promotions/actions/activate-all",
-  deactivateAll: "/promotions/actions/deactivate-all",
-  resync: "/promotions/sync"
+  activateAll: "/promotions/activate",
+  deactivateAll: "/promotions/deactivate",
+  deactivateFailed: "/promotions/deactivate-failed",
+  resync: "/promotions/sync",
+  syncOne: "/promotions/sync-one"
 };
 
 export async function runPromotionAction({ token, action, payload }) {
@@ -17,9 +18,24 @@ export async function runPromotionAction({ token, action, payload }) {
     throw error;
   }
 
-  const body = action === "resync"
-    ? { updatedBy: payload.updatedBy || "arturo" }
-    : payload;
+  const body = buildActionPayload(action, payload);
 
   return client.post(path, body);
+}
+
+function buildActionPayload(action, payload = {}) {
+  if (action === "syncOne") {
+    if (!payload.promotionId) {
+      const error = new Error("Promotion ID requerido");
+      error.status = 400;
+      throw error;
+    }
+
+    return {
+      promotionId: payload.promotionId,
+      updatedBy: payload.updatedBy || "arturo"
+    };
+  }
+
+  return { updatedBy: payload.updatedBy || "arturo" };
 }

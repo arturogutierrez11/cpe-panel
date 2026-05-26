@@ -588,7 +588,9 @@ function ActionsSection() {
   async function run(action) {
     setRunning(action);
     setResult("");
-    const payload = action === "resync" ? { updatedBy: "arturo" } : { promotionId };
+    const payload = action === "syncOne"
+      ? { promotionId, updatedBy: "arturo" }
+      : { updatedBy: "arturo" };
 
     const response = await fetch("/api/actions", {
       method: "POST",
@@ -598,7 +600,14 @@ function ActionsSection() {
 
     const data = await response.json().catch(() => ({}));
     setRunning("");
-    setResult(response.ok ? "Accion enviada correctamente." : data.message || "No se pudo ejecutar la accion.");
+    const message = response.ok
+      ? "Proceso iniciado en segundo plano. Puede tardar 30 minutos o mas."
+      : data.message || "No se pudo ejecutar la accion.";
+    setResult(message);
+
+    if (response.ok) {
+      window.alert(message);
+    }
   }
 
   return (
@@ -608,28 +617,32 @@ function ActionsSection() {
         <div className="action-list">
           <button onClick={() => run("activateAll")} disabled={Boolean(running)}>
             {running === "activateAll" ? <LoadingSpinner size="sm" label="Activando promociones" /> : <PlayCircle size={18} />}
-            Activar todas las aptas
+            Scheduler de activacion
           </button>
           <button onClick={() => run("deactivateAll")} disabled={Boolean(running)}>
             {running === "deactivateAll" ? <LoadingSpinner size="sm" label="Desactivando promociones" /> : <Trash2 size={18} />}
-            Desactivar todas
+            Scheduler de desactivacion
+          </button>
+          <button onClick={() => run("deactivateFailed")} disabled={Boolean(running)}>
+            {running === "deactivateFailed" ? <LoadingSpinner size="sm" label="Reintentando desactivaciones" /> : <RefreshCw size={18} />}
+            Reintentar desactivaciones fallidas
           </button>
           <button onClick={() => run("resync")} disabled={Boolean(running)}>
             {running === "resync" ? <LoadingSpinner size="sm" label="Sincronizando central" /> : <RefreshCw size={18} />}
-            Sincronizar central
+            Sincronizar campañas
           </button>
         </div>
       </section>
 
       <section className="clean-card">
-        <SectionHead title="Activar campaña" text="Ejecuta participacion para una campaña puntual del catalogo." />
+        <SectionHead title="Sincronizar campaña puntual" text="Ejecuta sync-one para una promocion especifica." />
         <label className="field-label">
           Promotion ID
-          <input value={promotionId} onChange={(event) => setPromotionId(event.target.value)} placeholder="P-MLA17339026" />
+          <input value={promotionId} onChange={(event) => setPromotionId(event.target.value)} placeholder="P-MLA17373038" />
         </label>
-        <button className="primary-action" onClick={() => run("activateCampaign")} disabled={!promotionId || Boolean(running)}>
-          {running === "activateCampaign" ? <LoadingSpinner size="sm" label="Activando campaña" /> : <PlayCircle size={18} />}
-          {running === "activateCampaign" ? "Activando..." : "Activar campaña"}
+        <button className="primary-action" onClick={() => run("syncOne")} disabled={!promotionId || Boolean(running)}>
+          {running === "syncOne" ? <LoadingSpinner size="sm" label="Sincronizando campaña" /> : <RefreshCw size={18} />}
+          {running === "syncOne" ? "Sincronizando..." : "Sincronizar campaña"}
         </button>
         {running ? (
           <p className="action-result action-result--loading">

@@ -59,6 +59,13 @@ export class CpeClient {
       throw error;
     }
 
-    return response.json();
+    const text = await response.text();
+    if (!text) return { ok: true };
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { ok: true, message: text };
+    }
   }
 }
