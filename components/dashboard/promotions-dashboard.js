@@ -585,29 +585,27 @@ function ActionsSection() {
   const [result, setResult] = useState("");
   const [running, setRunning] = useState("");
 
-  async function run(action) {
+  function run(action) {
+    if (action === "syncOne" && !promotionId.trim()) {
+      setResult("Promotion ID requerido.");
+      return;
+    }
+
     setRunning(action);
-    setResult("");
+    const message = "Proceso iniciado en segundo plano. Puede tardar 30 minutos o mas.";
     const payload = action === "syncOne"
-      ? { promotionId, updatedBy: "arturo" }
+      ? { promotionId: promotionId.trim(), updatedBy: "arturo" }
       : { updatedBy: "arturo" };
 
-    const response = await fetch("/api/actions", {
+    fetch("/api/actions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, payload })
-    });
+    }).catch(() => {});
 
-    const data = await response.json().catch(() => ({}));
-    setRunning("");
-    const message = response.ok
-      ? "Proceso iniciado en segundo plano. Puede tardar 30 minutos o mas."
-      : data.message || "No se pudo ejecutar la accion.";
     setResult(message);
-
-    if (response.ok) {
-      window.alert(message);
-    }
+    window.alert(message);
+    setTimeout(() => setRunning(""), 700);
   }
 
   return (
@@ -883,43 +881,95 @@ function PromotionDetail({ promotion }) {
   if (!promotion) {
     return (
       <aside className="clean-card detail-clean">
-        <div className="panel-placeholder">Selecciona una promocion para ver su detalle.</div>
+        <div className="promotion-detail-empty">
+          <Search size={22} />
+          <strong>Selecciona una promocion</strong>
+          <span>El detalle economico y operativo aparece aca.</span>
+        </div>
       </aside>
     );
   }
 
   return (
     <aside className="clean-card detail-clean">
-      <div className="detail-title">
-        <StatusPill status={promotion.status} />
-        <h2>{promotion.itemId}</h2>
-        <p>{promotion.name}</p>
+      <div className="promotion-detail-hero">
+        <div>
+          <StatusPill status={promotion.status} />
+          <h2>{promotion.name || promotion.itemId}</h2>
+          <p>{promotion.promotionId || "-"} · {promotion.type || "-"}</p>
+        </div>
+        <BooleanBadge value={promotion.economics?.profitable} />
       </div>
 
-      <div className="info-grid-compact">
-        <Info label="Precio sugerido" value={formatCurrency(promotion.prices?.suggestedPrice)} />
-        <Info label="Profit" value={formatCurrency(promotion.economics?.profit)} />
-        <Info label="Seller resigna" value={formatPercent(promotion.terms?.resignation?.seller?.percentage)} />
-        <Info label="ML resigna" value={formatPercent(promotion.terms?.resignation?.mercadolibre?.percentage)} />
+      <div className="promotion-detail-section">
+        <h3>Identificacion</h3>
+        <div className="info-grid-compact">
+          <Info label="Item" value={promotion.itemId || "-"} />
+          <Info label="SKU" value={promotion.sku || "-"} />
+          <Info label="Categoria" value={promotion.categoryId || "-"} />
+          <Info label="Listing" value={promotion.listingTypeId || "-"} />
+          <Info label="Offer" value={promotion.offerId || "-"} />
+          <Info label="Mongo ID" value={promotion._id || "-"} />
+        </div>
+      </div>
+
+      <div className="promotion-detail-section">
+        <h3>Economia</h3>
+        <div className="info-grid-compact">
+          <Info label="Precio original" value={formatCurrency(promotion.prices?.originalPrice)} />
+          <Info label="Precio sugerido" value={formatCurrency(promotion.prices?.suggestedPrice)} />
+          <Info label="Costo" value={formatCurrency(promotion.economics?.cost)} />
+          <Info label="Profit" value={formatCurrency(promotion.economics?.profit)} />
+          <Info label="Rentabilidad" value={formatPercent(promotion.economics?.profitability)} />
+          <Info label="Margen" value={formatPercent(promotion.economics?.margin)} />
+        </div>
+      </div>
+
+      <div className="promotion-detail-section">
+        <h3>Resignacion</h3>
+        <div className="info-grid-compact">
+          <Info label="Total" value={formatPercent(promotion.terms?.resignation?.total)} />
+          <Info label="Mercado Libre" value={`${formatPercent(promotion.terms?.resignation?.mercadolibre?.percentage)} · ${formatCurrency(promotion.terms?.resignation?.mercadolibre?.amount)}`} />
+          <Info label="Seller" value={`${formatPercent(promotion.terms?.resignation?.seller?.percentage)} · ${formatCurrency(promotion.terms?.resignation?.seller?.amount)}`} />
+          <Info label="Should pause" value={promotion.economics?.shouldPause ? "Si" : "No"} />
+        </div>
+      </div>
+
+      <div className="promotion-detail-section">
+        <h3>Fechas y metadata</h3>
+        <div className="info-grid-compact">
+          <Info label="Inicio" value={formatDateTime(promotion.startDate)} />
+          <Info label="Fin" value={formatDateTime(promotion.finishDate)} />
+          <Info label="Deadline" value={formatDateTime(promotion.deadlineDate)} />
+          <Info label="Actualizado" value={formatDateTime(promotion.updatedAt)} />
+          <Info label="Sync" value={formatDateTime(promotion.metadata?.syncedAt)} />
+          <Info label="Activacion" value={formatDateTime(promotion.metadata?.activatedAt)} />
+          <Info label="Updated by" value={promotion.metadata?.updatedBy || "-"} />
+          <Info label="Proceso" value={promotion.metadata?.sourceProcess || "-"} />
+        </div>
       </div>
 
       <div className="decision-box">
-        <strong>Decision del algoritmo</strong>
+        <strong>Motivo / decision</strong>
         <p>{promotion.metadata?.statusReason || promotion.metadata?.reason || "Sin motivo informado"}</p>
       </div>
 
       <div className="mini-timeline">
         <h3>Audit trail</h3>
-        {(promotion.auditTrail || []).slice().reverse().slice(0, 5).map((event, index) => (
-          <article key={`${event.process}-${event.executedAt}-${index}`}>
-            <span />
-            <div>
-              <strong>{event.process}</strong>
-              <small>{event.status} · {formatDateTime(event.executedAt)}</small>
-              <p>{event.reason}</p>
-            </div>
-          </article>
-        ))}
+        {(promotion.auditTrail || []).length ? (
+          (promotion.auditTrail || []).slice().reverse().slice(0, 6).map((event, index) => (
+            <article key={`${event.process}-${event.executedAt}-${index}`}>
+              <span />
+              <div>
+                <strong>{event.process || "-"}</strong>
+                <small>{event.status || "-"} · {formatDateTime(event.executedAt)}</small>
+                <p>{event.reason || "-"}</p>
+              </div>
+            </article>
+          ))
+        ) : (
+          <p className="detail-muted">Sin eventos registrados.</p>
+        )}
       </div>
     </aside>
   );

@@ -2767,6 +2767,96 @@ tbody tr.is-picked {
   background: #101927;
 }
 
+.detail-clean {
+  display: grid;
+  gap: 16px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.promotion-detail-empty {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  min-height: 220px;
+  padding: 24px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.promotion-detail-empty strong {
+  color: var(--text);
+}
+
+.promotion-detail-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 18px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.promotion-detail-hero h2 {
+  margin-top: 10px;
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1.18;
+}
+
+.promotion-detail-hero p {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.promotion-detail-section {
+  display: grid;
+  gap: 10px;
+  padding: 0 18px;
+}
+
+.promotion-detail-section h3,
+.mini-timeline h3 {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.detail-clean .info-grid-compact {
+  margin-top: 0;
+}
+
+.detail-clean .info-tile {
+  background: #f8fafc;
+  box-shadow: none;
+}
+
+.detail-clean .decision-box,
+.detail-clean .mini-timeline {
+  margin: 0 18px;
+}
+
+.detail-clean .mini-timeline {
+  padding-bottom: 18px;
+}
+
+.detail-muted {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ops-shell.is-night .promotion-detail-hero {
+  background: #101927;
+}
+
+.ops-shell.is-night .detail-clean .info-tile {
+  background: #101927;
+}
+
 @media (max-width: 1180px) {
   .settings-grid {
     grid-template-columns: 1fr;
