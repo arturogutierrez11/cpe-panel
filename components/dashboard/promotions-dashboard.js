@@ -4,9 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   Bell,
+  AlertTriangle,
+  Calculator,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  Clock,
   ExternalLink,
   Gauge,
   LogOut,
@@ -36,6 +39,7 @@ const navItems = [
   { id: "orders", label: "Ordenes", icon: ClipboardList },
   { id: "central", label: "Central", icon: Gauge },
   { id: "catalog", label: "Catalogo", icon: Store },
+  { id: "pricing", label: "Pricing", icon: Calculator },
   { id: "actions", label: "Acciones", icon: SlidersHorizontal },
   { id: "logs", label: "DataDog", icon: Activity },
   { id: "notifications", label: "Notificaciones", icon: Bell }
@@ -211,10 +215,13 @@ export function PromotionsDashboard() {
           })}
         </nav>
 
-        <button className={section === "configuration" ? "ops-logout is-active" : "ops-logout"} onClick={() => setSection("configuration")}>
-          <Settings size={18} />
-          Configuracion
-        </button>
+        <div className="ops-sidebar-footer">
+          <button className={section === "configuration" ? "ops-logout is-active" : "ops-logout"} onClick={() => setSection("configuration")}>
+            <Settings size={18} />
+            Configuracion
+          </button>
+          <span>V.0.01</span>
+        </div>
       </aside>
 
       <section className="ops-main">
@@ -259,6 +266,7 @@ export function PromotionsDashboard() {
 
         {section === "orders" ? <OrdersSection orders={orders} loading={loading.orders} /> : null}
         {section === "catalog" ? <CatalogSection catalog={catalog} loading={loading.catalog} /> : null}
+        {section === "pricing" ? <PricingSection /> : null}
         {section === "actions" ? <ActionsSection /> : null}
         {section === "logs" ? <LogsSection /> : null}
         {section === "notifications" ? <NotificationsSection notifications={notifications} /> : null}
@@ -320,23 +328,37 @@ function PromotionStats({ stats, loading }) {
       {groups.map((group) => (
         <article className="clean-card promotion-type-card" key={group.key}>
           <div className="promotion-type-head">
-            <span>{group.label}</span>
-            <strong>{formatNumber(group.data?.total || 0)}</strong>
+            <div>
+              <span>{group.label}</span>
+              <strong>{formatNumber(group.data?.total || 0)}</strong>
+            </div>
+            <small>Total del tipo</small>
           </div>
           <div className="promotion-type-breakdown">
-            <Info label="Pendientes" value={formatNumber(group.data?.pending || 0)} />
-            <Info label="Activas" value={formatNumber(group.data?.active || 0)} />
-            <Info label="Pausadas" value={formatNumber(group.data?.paused || 0)} />
-            <Info label="Synced" value={formatNumber(group.data?.synced || 0)} />
-            <Info label="Eliminadas" value={formatNumber(group.data?.deleted || 0)} />
-            <Info label="Finalizadas" value={formatNumber(group.data?.finished || 0)} />
-            <Info label="Failed sync" value={formatNumber(group.data?.failedSync || 0)} />
-            <Info label="Fallidas act." value={formatNumber(group.data?.failedActivation || 0)} />
-            <Info label="Fallidas desact." value={formatNumber(group.data?.failedDeactivation || 0)} />
+            <StatusMetric label="Activas" value={group.data?.active || 0} tone="active" />
+            <StatusMetric label="Synced" value={group.data?.synced || 0} tone="synced" />
+            <StatusMetric label="Finalizadas" value={group.data?.finished || 0} tone="finished" />
+            <StatusMetric label="Eliminadas" value={group.data?.deleted || 0} tone="deleted" />
+            <StatusMetric label="Pendientes" value={group.data?.pending || 0} tone="pending" subtle />
+            <StatusMetric label="Pausadas" value={group.data?.paused || 0} tone="paused" subtle />
+          </div>
+          <div className="promotion-alert-strip">
+            <StatusMetric label="Failed sync" value={group.data?.failedSync || 0} tone="failed" compact />
+            <StatusMetric label="Fallidas act." value={group.data?.failedActivation || 0} tone="failed" compact />
+            <StatusMetric label="Fallidas desact." value={group.data?.failedDeactivation || 0} tone="critical" compact />
           </div>
         </article>
       ))}
     </section>
+  );
+}
+
+function StatusMetric({ label, value, tone, compact = false, subtle = false }) {
+  return (
+    <div className={`status-metric status-metric--${tone}${compact ? " status-metric--compact" : ""}${subtle ? " status-metric--subtle" : ""}`}>
+      <span><i aria-hidden="true" />{label}</span>
+      <strong>{formatNumber(value || 0)}</strong>
+    </div>
   );
 }
 
@@ -580,10 +602,156 @@ function CatalogSection({ catalog, loading }) {
   );
 }
 
+function PricingSection() {
+  const [form, setForm] = useState({
+    mla: "MLA2228742950",
+    categoryId: "MLA31040",
+    publicationType: "gold_special",
+    sku: "B0F47N62NN",
+    salePrice: "731399",
+    meliContributionPercentage: "2.4"
+  });
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  function updateField(field, value) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function calculatePricing(event) {
+    event.preventDefault();
+    setLoading(true);
+    setError("");
+    setResult(null);
+
+    const payload = {
+      ...form,
+      salePrice: Number(form.salePrice)
+    };
+
+    if (!form.meliContributionPercentage) {
+      delete payload.meliContributionPercentage;
+    } else {
+      payload.meliContributionPercentage = Number(form.meliContributionPercentage);
+    }
+
+    try {
+      const response = await fetch("/api/pricing/details", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) throw new Error(data.message || "No se pudo calcular pricing");
+      setResult(data);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="pricing-layout">
+      <section className="clean-card pricing-form-card">
+        <SectionHead title="Pricing de promocion" text="Componer precio, aporte MELI y rentabilidad para una publicacion." />
+        <form className="pricing-form" onSubmit={calculatePricing}>
+          <PricingField label="mla" value={form.mla} onChange={(value) => updateField("mla", value)} placeholder="MLA2228742950" />
+          <PricingField label="categoryId" value={form.categoryId} onChange={(value) => updateField("categoryId", value)} placeholder="MLA31040" />
+          <PricingField label="publicationType" value={form.publicationType} onChange={(value) => updateField("publicationType", value)} placeholder="gold_special" />
+          <PricingField label="sku" value={form.sku} onChange={(value) => updateField("sku", value)} placeholder="B0F47N62NN" />
+          <PricingField label="salePrice" type="number" value={form.salePrice} onChange={(value) => updateField("salePrice", value)} placeholder="731399" />
+          <PricingField label="meliContributionPercentage" type="number" value={form.meliContributionPercentage} onChange={(value) => updateField("meliContributionPercentage", value)} placeholder="Opcional" optional />
+          <button className="primary-action pricing-submit" type="submit" disabled={loading}>
+            {loading ? <LoadingSpinner size="sm" label="Calculando pricing" /> : <Calculator size={18} />}
+            {loading ? "Calculando..." : "Calcular pricing"}
+          </button>
+        </form>
+        {error ? <p className="inline-alert">{error}</p> : null}
+      </section>
+
+      <section className="clean-card pricing-result-card">
+        <SectionHead title="Resultado" text="Respuesta de getProfit/details agrupada por los mismos nombres del servicio." />
+        {loading ? <LoadingBlock label="Calculando pricing" /> : null}
+        {!loading && !result ? <div className="panel-placeholder">Completa los datos y calcula para ver el detalle.</div> : null}
+        {!loading && result ? <PricingResult result={result} /> : null}
+      </section>
+    </div>
+  );
+}
+
+function PricingField({ label, value, onChange, placeholder, type = "text", optional = false }) {
+  return (
+    <label className="pricing-field">
+      <span>{label}{optional ? <small>Opcional</small> : null}</span>
+      <input type={type} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} step={type === "number" ? "any" : undefined} />
+    </label>
+  );
+}
+
+function PricingResult({ result }) {
+  const groups = ["input", "prices", "datosBase", "tiposDeCambio", "costosOperativos", "emo", "costosCalculados", "resultados", "precio"];
+
+  return (
+    <div className="pricing-result">
+      {groups.filter((group) => result[group]).map((group) => (
+        <article className="pricing-result-group" key={group}>
+          <h3>{group}</h3>
+          <div>
+            {Object.entries(result[group]).map(([key, value]) => (
+              <Info key={`${group}-${key}`} label={key} value={formatPricingValue(value)} />
+            ))}
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function formatPricingValue(value) {
+  if (typeof value === "number") return formatNumber(value);
+  if (value === null || value === undefined || value === "") return "-";
+  return String(value);
+}
+
 function ActionsSection() {
   const [promotionId, setPromotionId] = useState("");
   const [result, setResult] = useState("");
   const [running, setRunning] = useState("");
+  const schedulerRows = [
+    { label: "Sincronizacion", schedule: "Todos los dias a las 09:00" },
+    { label: "Activacion", schedule: "Todos los dias a las 00:00, 06:00, 12:00 y 18:00" },
+    { label: "Desactivacion", schedule: "Todos los dias a las 03:00, 15:00 y 21:00" }
+  ];
+  const actionRows = [
+    {
+      action: "resync",
+      title: "Sincronizar campañas",
+      text: "Ejecuta el scheduler de sync manualmente. Deja las promociones actualizadas desde MELI.",
+      icon: RefreshCw
+    },
+    {
+      action: "activateAll",
+      title: "Scheduler de activacion",
+      text: "Evalua reglas economicas y participa promociones aptas.",
+      icon: PlayCircle
+    },
+    {
+      action: "deactivateAll",
+      title: "Scheduler de desactivacion",
+      text: "Revisa promociones activas y desparticipa las que ya no cumplen criterio.",
+      icon: Trash2
+    },
+    {
+      action: "deactivateFailed",
+      title: "Reintentar fallidas de desactivacion",
+      text: "Vuelve a intentar desactivar las promociones que quedaron en failedDeactivation.",
+      icon: AlertTriangle,
+      danger: true
+    }
+  ];
 
   function run(action) {
     if (action === "syncOne" && !promotionId.trim()) {
@@ -609,46 +777,61 @@ function ActionsSection() {
   }
 
   return (
-    <div className="actions-grid">
-      <section className="clean-card">
-        <SectionHead title="Acciones masivas" text="Operaciones sobre la central. Dejadas separadas para reducir errores." />
-        <div className="action-list">
-          <button onClick={() => run("activateAll")} disabled={Boolean(running)}>
-            {running === "activateAll" ? <LoadingSpinner size="sm" label="Activando promociones" /> : <PlayCircle size={18} />}
-            Scheduler de activacion
-          </button>
-          <button onClick={() => run("deactivateAll")} disabled={Boolean(running)}>
-            {running === "deactivateAll" ? <LoadingSpinner size="sm" label="Desactivando promociones" /> : <Trash2 size={18} />}
-            Scheduler de desactivacion
-          </button>
-          <button onClick={() => run("deactivateFailed")} disabled={Boolean(running)}>
-            {running === "deactivateFailed" ? <LoadingSpinner size="sm" label="Reintentando desactivaciones" /> : <RefreshCw size={18} />}
-            Reintentar desactivaciones fallidas
-          </button>
-          <button onClick={() => run("resync")} disabled={Boolean(running)}>
-            {running === "resync" ? <LoadingSpinner size="sm" label="Sincronizando central" /> : <RefreshCw size={18} />}
-            Sincronizar campañas
-          </button>
+    <div className="actions-page">
+      <section className="clean-card scheduler-card">
+        <SectionHead title="Agenda automatica" text="Horarios configurados para Argentina. Estos procesos corren solos todos los dias." />
+        <div className="scheduler-grid">
+          {schedulerRows.map((row) => (
+            <article key={row.label}>
+              <div className="scheduler-icon"><Clock size={18} /></div>
+              <div>
+                <strong>{row.label}</strong>
+                <span>{row.schedule}</span>
+              </div>
+            </article>
+          ))}
+        </div>
+        <div className="scheduler-note">
+          <AlertTriangle size={17} />
+          <span>Las ejecuciones manuales no reemplazan la agenda automatica; solo disparan una corrida adicional.</span>
         </div>
       </section>
 
-      <section className="clean-card">
-        <SectionHead title="Sincronizar campaña puntual" text="Ejecuta sync-one para una promocion especifica." />
-        <label className="field-label">
-          Promotion ID
-          <input value={promotionId} onChange={(event) => setPromotionId(event.target.value)} placeholder="P-MLA17373038" />
-        </label>
-        <button className="primary-action" onClick={() => run("syncOne")} disabled={!promotionId || Boolean(running)}>
-          {running === "syncOne" ? <LoadingSpinner size="sm" label="Sincronizando campaña" /> : <RefreshCw size={18} />}
-          {running === "syncOne" ? "Sincronizando..." : "Sincronizar campaña"}
-        </button>
-        {running ? (
-          <p className="action-result action-result--loading">
-            <LoadingSpinner size="sm" label="Procesando accion" />
-            Procesando accion...
-          </p>
-        ) : null}
+      <section className="clean-card operations-card">
+        <SectionHead title="Ejecucion manual" text="Estos botones disparan el proceso y el backend sigue trabajando en segundo plano." />
+        <div className="operation-list">
+          {actionRows.map((row) => {
+            const Icon = row.icon;
+            return (
+              <article className={row.danger ? "operation-item is-danger" : "operation-item"} key={row.action}>
+                <div className="operation-icon"><Icon size={20} /></div>
+                <div className="operation-copy">
+                  <strong>{row.title}</strong>
+                  <p>{row.text}</p>
+                </div>
+                <button onClick={() => run(row.action)} disabled={Boolean(running)}>
+                  {running === row.action ? <LoadingSpinner size="sm" label={row.title} /> : <PlayCircle size={17} />}
+                  Ejecutar
+                </button>
+              </article>
+            );
+          })}
+        </div>
         {result ? <p className="action-result">{result}</p> : null}
+      </section>
+
+      <section className="clean-card sync-one-card">
+        <SectionHead title="Sincronizar una campaña" text="Usa sync-one con Promotion ID y updatedBy fijo como arturo." />
+        <div className="sync-one-form">
+          <label className="field-label">
+            Promotion ID
+            <input value={promotionId} onChange={(event) => setPromotionId(event.target.value)} placeholder="P-MLA17373038" />
+          </label>
+          <button className="primary-action" onClick={() => run("syncOne")} disabled={!promotionId.trim() || Boolean(running)}>
+            {running === "syncOne" ? <LoadingSpinner size="sm" label="Sincronizando campaña" /> : <RefreshCw size={18} />}
+            {running === "syncOne" ? "Sincronizando..." : "Sincronizar campaña"}
+          </button>
+        </div>
       </section>
     </div>
   );
@@ -1062,6 +1245,7 @@ function titleFor(section) {
     orders: "Ordenes",
     central: "Central de promociones",
     catalog: "Catalogo de promociones",
+    pricing: "Pricing",
     actions: "Acciones operativas",
     logs: "Logs de DataDog",
     notifications: "Notificaciones",
@@ -1074,6 +1258,7 @@ function descriptionFor(section) {
     orders: "Ordenes que llegan desde promociones y campañas activas.",
     central: "Todas las promociones del Mongo con filtros por estado y lectura economica.",
     catalog: "Campañas disponibles para activar, auditar o cruzar contra la central.",
+    pricing: "Calcula pricing, aporte MELI y rentabilidad para una promocion.",
     actions: "Activaciones, desactivaciones y sincronizaciones controladas.",
     logs: "Acceso directo al stream operativo para investigar procesos.",
     notifications: "Ultimos procesos, cambios de estado y eventos importantes.",
